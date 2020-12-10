@@ -1,15 +1,18 @@
 package main
-
+//https://ubuntu.com/security/cve?offset=34170
 import (
+	"bufio"
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"github.com/PuerkitoBio/goquery"
 	"log"
+	"os"
 	"strings"
 
 	"github.com/gocolly/colly"
 )
-var count = 0
+//var count = 0
 func main() {
 	// Instantiate default collector
 	c := colly.NewCollector(
@@ -17,15 +20,14 @@ func main() {
 		colly.AllowedDomains("ubuntu.com"),
 	)
 
-	//count := 0
+	count := 0
 	// On every a element which has href attribute call callback
 	c.OnHTML("a.p-pagination__link--next[href]", func(e *colly.HTMLElement) {
-		if count > 1 {
+		if count > 0 {
 			return
 		}
 		count ++
 		link := e.Attr("href")
-		fmt.Printf("Link found: %q -> %s\n", e.Text, link)
 		c.Visit(e.Request.AbsoluteURL(link))
 		// Print link
 		// Visit link found on page
@@ -37,6 +39,7 @@ func main() {
 		fmt.Println("Visiting", r.URL.String())
 	})
 
+	result := make([]CveData, 0)
 	c.OnResponse(func(response *colly.Response) {
 		// Load the HTML document
 		doc, err := goquery.NewDocumentFromReader(bytes.NewReader(response.Body))
@@ -48,7 +51,7 @@ func main() {
 		doc.Find(".cve-table").Each(func(i int, s *goquery.Selection) {
 			// For each item found, get the band and title
 			cveLinks := s.Find("a[href]")
-			for i, value := range cveLinks.Nodes{
+			for _, value := range cveLinks.Nodes{
 				href := ""
 				for _, att := range value.Attr{
 					if strings.Compare(att.Key, "href") == 0{
@@ -56,16 +59,24 @@ func main() {
 					}
 				}
 				fullPath := response.Request.AbsoluteURL(href)
-				fmt.Printf("Review %d: %s --> %s\n", i, href, fullPath)
 				cveID := value.FirstChild.Data
-				processCVEDetailsPage(fullPath, cveID)
-				return
+				result = append(result, processCVEDetailsPage(fullPath, cveID))
 			}
 		})
-		fmt.Println()
 	})
 
-
-	// Start scraping on https://hackerspaces.org
 	c.Visit("https://ubuntu.com/security/cve")
+
+	b, err := json.Marshal(&result)
+	if err != nil {
+		fmt.Println("failed to serialize response:", err)
+	}else {
+		file, err := os.Create("ubuntu_cve.json")
+		if err != nil {
+			log.Fatal(err)
+		}
+		defer file.Close()
+		bufferWritter := bufio.NewWriter(file)
+		bufferWritter.Write(b)
+	}
 }
