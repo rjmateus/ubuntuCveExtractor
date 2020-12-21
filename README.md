@@ -1,5 +1,7 @@
 # ubuntuCveExtractor
 
+This is an example project to try out crawler in golang.
+
 The goal is to extract CVE information for Ubuntu releases. 
 
 It will read data start in the page `https://ubuntu.com/security/cve`
